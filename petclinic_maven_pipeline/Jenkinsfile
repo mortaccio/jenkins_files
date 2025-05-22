@@ -1,0 +1,67 @@
+pipeline {
+    agent any
+
+    tools {
+        maven 'maven' 
+    }
+
+    environment {
+        NEXUS_URL = 'nexus-service.nexus.svc.cluster.local:8081'
+        NEXUS_REPO = 'maven-snapshots'
+        NEXUS_CREDENTIALS_ID = 'nexus'              
+        ARTIFACT_VERSION = '3.4.0-SNAPSHOT'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/spring-projects/spring-petclinic.git'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh 'mvn clean package -DskipTests'
+            }
+        }
+
+        stage('Verify Artifact') {
+            steps {
+                sh 'ls -lh target'
+            }
+        }
+
+        stage('Test Nexus Connectivity') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: "${env.NEXUS_CREDENTIALS_ID}", usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
+                    sh 'curl -s -u $NEXUS_USER:$NEXUS_PASS http://${NEXUS_URL}/service/rest/v1/status || echo "Nexus unavailable"'
+                }
+            }
+        }
+
+        stage('Upload Artifact to Nexus') {
+            steps {
+                script {
+                    def jarFile = sh(script: "ls target/spring-petclinic-*.jar | head -n 1", returnStdout: true).trim()
+                    echo "Uploading artifact: ${jarFile}"
+
+                    nexusArtifactUploader(
+                        nexusVersion: 'nexus3',
+                        protocol: 'http',
+                        nexusUrl: "${env.NEXUS_URL}",
+                        groupId: 'org.springframework.samples',
+                        version: "${env.ARTIFACT_VERSION}",
+                        repository: "${env.NEXUS_REPO}",
+                        credentialsId: "${env.NEXUS_CREDENTIALS_ID}",
+                        artifacts: [[
+                            artifactId: 'spring-petclinic',
+                            classifier: '',
+                            file: jarFile,
+                            type: 'jar'
+                        ]]
+                    )
+                }
+            }
+        }
+    }
+}
