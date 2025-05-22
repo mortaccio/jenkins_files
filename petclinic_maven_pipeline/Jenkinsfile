@@ -63,5 +63,31 @@ pipeline {
                 }
             }
         }
+
+        stage('Build Docker Image from Nexus JAR') {
+    steps {
+        withCredentials([usernamePassword(credentialsId: "${env.NEXUS_CREDENTIALS_ID}", usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
+            script {
+                def artifactPath = "org/springframework/samples/spring-petclinic/${ARTIFACT_VERSION}/spring-petclinic-${ARTIFACT_VERSION}.jar"
+                def downloadUrl = "http://${NEXUS_URL}/repository/${NEXUS_REPO}/${artifactPath}"
+
+                sh """
+                    echo "Downloading JAR from Nexus..."
+                    curl -u $NEXUS_USER:$NEXUS_PASS -o app.jar ${downloadUrl}
+
+                    echo "Building Docker image..."
+                    cat <<EOF > Dockerfile
+                    FROM openjdk:17-jdk-alpine
+                    COPY app.jar app.jar
+                    ENTRYPOINT ["java", "-jar", "/app.jar"]
+                    EOF
+
+                    docker build -t spring-petclinic:${ARTIFACT_VERSION} .
+                """
+            }
+        }
+    }
+}
+
     }
 }
